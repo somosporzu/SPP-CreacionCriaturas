@@ -1,0 +1,14 @@
+{
+  "name": "spp-creacion-criaturas",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Sistema de creación de Criaturas diseñado para el sistema PAPA",
+  "scripts": {
+    "dev": "node server.js",
+    "build": "mkdir -p dist && cp index.html dist/",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}

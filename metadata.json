@@ -1,0 +1,8 @@
+{
+  "name": "Creador de Criaturas PAPA",
+  "description": "Sistema de creación de Criaturas diseñado para el sistema PAPA",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
