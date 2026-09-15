@@ -1,6 +1,6 @@
 {
   "name": "Creador de Criaturas PAPA",
-  "description": "Sistema de creación de Criaturas diseñado para el sistema PAPA",
+  "description": "Sistema de creación y diseño de criaturas para el juego de rol PAPA, según las reglas oficiales.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
