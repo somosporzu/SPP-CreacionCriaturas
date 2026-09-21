@@ -463,6 +463,7 @@ function rebuild() {
 function refresh(rebuildLists = false) {
   renderQuickStats();
   renderSummary();
+  updateValidationBadge();
   if ($('attrControls')) renderAttrControls();
   if ($('natureInfo')) renderNatureInfo();
   if ($('typeAbilityInfo')) renderTypeAbilityInfo();
@@ -611,7 +612,7 @@ function buildSections() {
       <div class="field-card">
         <h3>Paso 9: Rasgos a Favor (12 Categorías Oficiales)</h3>
         <p class="mini muted">Los rasgos definen las ventajas, defensas, sentidos, ataques especiales y dones mágicos de la criatura. Todos los costes descuentan Puntos de Rasgo (PR).</p>
-        <div class="grid2">
+        <div class="grid3">
           <div>
             <label>Buscar en catálogo</label>
             <input id="traitSearch" placeholder="Nombre, palabra clave o efecto...">
@@ -622,6 +623,17 @@ function buildSections() {
               <option value="">Todas las categorías (1 a 12)</option>
               <option value="__custom__">★ Crear Rasgo Personalizado</option>
               ${opt([...new Set(DATA.traits.map(x => x.category))], '')}
+            </select>
+          </div>
+          <div>
+            <label>Filtro Rápido</label>
+            <select id="traitQuickFilter">
+              <option value="all">Mostrar todos</option>
+              <option value="selected">Solo seleccionados en esta ficha</option>
+              <option value="unselected">Solo no seleccionados</option>
+              <option value="cost1">Coste: 1 PR</option>
+              <option value="cost2">Coste: 2 PR</option>
+              <option value="cost3">Coste: 3+ PR</option>
             </select>
           </div>
         </div>
@@ -640,7 +652,7 @@ function buildSections() {
       <div class="field-card">
         <h3>Paso 9: Desventajas (Menores +1 PR, Medias +2 PR, Mayores +3 PR)</h3>
         <p class="mini muted">Las desventajas otorgan PR adicionales al presupuesto, introduciendo debilidades, vulnerabilidades, costes mágicos o límites físicos claros.</p>
-        <div class="grid2">
+        <div class="grid3">
           <div>
             <label>Buscar desventaja</label>
             <input id="disSearch" placeholder="Nombre o efecto...">
@@ -651,6 +663,17 @@ function buildSections() {
               <option value="">Todas las desventajas</option>
               <option value="__custom__">★ Crear Desventaja Personalizada</option>
               ${opt([...new Set(DATA.disadvantages.map(x => x.category))], '')}
+            </select>
+          </div>
+          <div>
+            <label>Filtro Rápido</label>
+            <select id="disQuickFilter">
+              <option value="all">Mostrar todas</option>
+              <option value="selected">Solo seleccionadas en esta ficha</option>
+              <option value="unselected">Solo no seleccionadas</option>
+              <option value="pr1">Menor (+1 PR)</option>
+              <option value="pr2">Media (+2 PR)</option>
+              <option value="pr3">Mayor (+3 PR)</option>
             </select>
           </div>
         </div>
@@ -796,13 +819,16 @@ function buildSections() {
             <select id="exportMode">
               <option value="complete">Versión completa para Diseñadores (Págs 82-84)</option>
               <option value="compact">Versión compacta para manuales y bestiarios (Págs 84-85)</option>
+              <option value="discord">Formato Discord (Markdown limpio para canales y chats)</option>
+              <option value="bbcode">Formato BBCode (Foros de rol y comunidades)</option>
             </select>
           </div>
           <div>
             <label>Acciones rápidas</label>
-            <div class="row" style="margin-top:4px;">
+            <div class="row" style="margin-top:4px;gap:6px;flex-wrap:wrap;">
               <button class="btn" id="copyText">Copiar al portapapeles</button>
               <button class="btn secondary" id="downloadTxt">Descargar .txt</button>
+              <button class="btn secondary" id="openStatblockFromExportBtn">📜 Abrir Tarjeta de Bestiario</button>
             </div>
           </div>
         </div>
@@ -844,6 +870,7 @@ function bindBaseInputs() {
   $('behaviorSel').onchange = e => { state.behavior = e.target.value; renderBehaviorInfo(); refresh(true); };
 
   $('traitSearch').oninput = renderTraitList;
+  if ($('traitQuickFilter')) $('traitQuickFilter').onchange = renderTraitList;
   $('traitCat').onchange = e => {
     $('customTraitBox').classList.toggle('hidden', e.target.value !== '__custom__');
     $('traitCatalogBox').classList.toggle('hidden', e.target.value === '__custom__');
@@ -851,6 +878,7 @@ function bindBaseInputs() {
   };
 
   $('disSearch').oninput = renderDisList;
+  if ($('disQuickFilter')) $('disQuickFilter').onchange = renderDisList;
   $('disCat').onchange = e => {
     $('customDisBox').classList.toggle('hidden', e.target.value !== '__custom__');
     $('disCatalogBox').classList.toggle('hidden', e.target.value === '__custom__');
@@ -1159,10 +1187,18 @@ function customSpellForm() {
 function renderTraitList() {
   let cat = $('traitCat')?.value || '';
   let search = ($('traitSearch')?.value || '').toLowerCase();
+  let quick = $('traitQuickFilter')?.value || 'all';
   let list = $('traitList');
   if (!list) return;
 
   let traits = DATA.traits.filter(t => {
+    let sel = state.selectedTraits.find(x => x.name === t.name);
+    if (quick === 'selected' && !sel) return false;
+    if (quick === 'unselected' && sel) return false;
+    if (quick === 'cost1' && (num(t.cost) !== 1)) return false;
+    if (quick === 'cost2' && (num(t.cost) !== 2)) return false;
+    if (quick === 'cost3' && (num(t.cost) < 3)) return false;
+
     if (cat && t.category !== cat) return false;
     if (search && !t.name.toLowerCase().includes(search) && !t.text.toLowerCase().includes(search) && !t.category.toLowerCase().includes(search)) return false;
     return true;
@@ -1189,16 +1225,24 @@ function renderTraitList() {
         <div class="item-text">${esc(t.text)}</div>
       </div>
     `;
-  }).join('') || '<p class="mini muted">No se encontraron rasgos con ese criterio.</p>';
+  }).join('') || '<p class="mini muted">No se encontraron rasgos con ese criterio o filtro seleccionado.</p>';
 }
 
 function renderDisList() {
   let cat = $('disCat')?.value || '';
   let search = ($('disSearch')?.value || '').toLowerCase();
+  let quick = $('disQuickFilter')?.value || 'all';
   let list = $('disList');
   if (!list) return;
 
   let dis = DATA.disadvantages.filter(d => {
+    let sel = state.selectedDisadvantages.find(x => x.name === d.name);
+    if (quick === 'selected' && !sel) return false;
+    if (quick === 'unselected' && sel) return false;
+    if (quick === 'pr1' && (num(d.pr) !== 1)) return false;
+    if (quick === 'pr2' && (num(d.pr) !== 2)) return false;
+    if (quick === 'pr3' && (num(d.pr) < 3)) return false;
+
     if (cat && d.category !== cat) return false;
     if (search && !d.name.toLowerCase().includes(search) && !d.text.toLowerCase().includes(search) && !d.category.toLowerCase().includes(search)) return false;
     return true;
@@ -1225,7 +1269,7 @@ function renderDisList() {
         <div class="item-text">${esc(d.text)}</div>
       </div>
     `;
-  }).join('') || '<p class="mini muted">No se encontraron desventajas con ese criterio.</p>';
+  }).join('') || '<p class="mini muted">No se encontraron desventajas con ese criterio o filtro seleccionado.</p>';
 }
 
 function renderEquipmentList() {
@@ -1943,6 +1987,108 @@ function exportText(mode = 'complete') {
     ].filter(line => line !== null && line !== undefined).join('\n');
   }
 
+  if (mode === 'discord') {
+    // Formato optimizado para Discord (Markdown con negritas, código y listas)
+    return [
+      `>>> # 📜 ${name} (ND ${state.nd})`,
+      `*${identity}*`,
+      '',
+      `**Tipo:** ${state.type}${state.tag ? ` (${state.tag})` : ''} | **Naturaleza:** ${state.nature || '—'} | **Comportamiento:** ${state.behavior}`,
+      `**Tamaño:** ${state.size} | **Movimiento:** ${c.moveBand} | **Alcance CQC:** ${c.reach}`,
+      '',
+      '```ini',
+      `[Resistencia]: ${c.res}    [Defensa]: ${c.def}    [Daño Base]: ${c.base.damage}`,
+      `[Cuerpo]: +${c.C}         [Destreza]: +${c.D}       [Aura]: +${c.A}`,
+      '```',
+      '⚔️ **ACCIONES DE ATAQUE**',
+      ...attacks.map(a => `• **${a.name}:** Tirada ${a.attr} (+${c[a.attr[0]]}) | Alcance: *${a.range}* | Daño: **${a.damage}** (${a.dmgType || 'Físico'}) — ${a.effect}`),
+      '',
+      '✨ **CONJUROS**',
+      ...(spells.length > 0
+        ? spells.map(s => `• **${s.name}** (Nivel ${'I'.repeat(s.level || 1)}, Coste ${s.cost || `${s.resCost || 2} Res`}): *${s.action}*, Distancia: ${s.range}. ${s.effect} [Duración: ${s.duration}]`)
+        : ['*Sin conjuros.*']
+      ),
+      '',
+      '🛡️ **HABILIDADES Y RASGOS PASIVOS**',
+      `• **Habilidad de Tipo (${state.type}):** ${ability.name} — ${ability.text.replace(/\n/g, ' ')}`,
+      ...state.selectedTraits.map(t => {
+        let raw = DATA.traits.find(z => z.name === t.name);
+        return `• **${t.name}**: ${raw ? raw.text.split('\n')[0] : ''}`;
+      }),
+      ...state.customTraits.map(t => `• **${t.name} (Personalizado)**: ${t.note || '—'}`),
+      '',
+      '⚠️ **DESVENTAJAS**',
+      ...state.selectedDisadvantages.map(d => {
+        let raw = DATA.disadvantages.find(z => z.name === d.name);
+        return `• **${d.name}**: ${raw ? raw.text.split('\n')[0] : ''}`;
+      }),
+      ...state.customDisadvantages.map(d => `• **${d.name} (Personalizada)**: ${d.note || '—'}`),
+      ...(state.selectedDisadvantages.length === 0 && state.customDisadvantages.length === 0 ? ['*Ninguna desventaja.*'] : []),
+      '',
+      '🎒 **EQUIPO**',
+      ...(state.equipment.length > 0 || state.customEquipment.length > 0
+        ? [...state.equipment.map(e => e.name), ...state.customEquipment.map(e => e.name)].map(e => `• ${e}`)
+        : ['*Sin equipo.*']
+      ),
+      ...(state.tactics ? ['', '🧠 **MODO DE ACTUAR**', state.tactics] : [])
+    ].filter(line => line !== null && line !== undefined).join('\n');
+  }
+
+  if (mode === 'bbcode') {
+    // Formato BBCode para foros clásicos de rol
+    return [
+      `[size=5][b][color=#8c2d19]${name}[/color][/b][/size] [b](ND ${state.nd})[/b]`,
+      `[i]${identity}[/i]`,
+      '[hr]',
+      `[b]Clasificación:[/b] ${state.type}${state.tag ? ` (${state.tag})` : ''} | [b]Herencia:[/b] ${state.heritage || '—'} | [b]Naturaleza:[/b] ${state.nature || '—'} | [b]Comportamiento:[/b] ${state.behavior}`,
+      `[b]Tamaño:[/b] ${state.size} | [b]Movimiento:[/b] ${c.moveBand} | [b]Alcance:[/b] ${c.reach}`,
+      '',
+      `[b]Resistencia:[/b] ${c.res} | [b]Defensa:[/b] ${c.def} | [b]Daño Base:[/b] ${c.base.damage}`,
+      `[b]Cuerpo:[/b] ${c.C} | [b]Destreza:[/b] ${c.D} | [b]Aura:[/b] ${c.A}`,
+      '[hr]',
+      '[size=4][b][color=#8c2d19]Ataques[/color][/b][/size]',
+      '[list]',
+      ...attacks.map(a => `[*] [b]${a.name}:[/b] Tirada con ${a.attr} (+${c[a.attr[0]]}), alcance ${a.range}, daño ${a.damage} ${a.dmgType || ''}. ${a.effect}`),
+      '[/list]',
+      '',
+      '[size=4][b][color=#8c2d19]Conjuros[/color][/b][/size]',
+      ...(spells.length > 0
+        ? [
+            '[list]',
+            ...spells.map(s => `[*] [b]${s.name}[/b] (Nivel ${'I'.repeat(s.level || 1)}, Coste ${s.cost || `${s.resCost || 2} Res`}): ${s.action}, ${s.range}. ${s.effect} (Duración: ${s.duration})`),
+            '[/list]'
+          ]
+        : ['Ninguno.']
+      ),
+      '',
+      '[size=4][b][color=#8c2d19]Habilidades y Rasgos Pasivos[/color][/b][/size]',
+      '[list]',
+      `[*] [b]Habilidad de Tipo (${state.type}):[/b] ${ability.name} — ${ability.text.replace(/\n/g, ' ')}`,
+      ...state.selectedTraits.map(t => {
+        let raw = DATA.traits.find(z => z.name === t.name);
+        return `[*] [b]${t.name}:[/b] ${raw ? raw.text.split('\n')[0] : ''}`;
+      }),
+      ...state.customTraits.map(t => `[*] [b]${t.name} (Personalizado):[/b] ${t.note || '—'}`),
+      '[/list]',
+      '',
+      '[size=4][b][color=#8c2d19]Desventajas[/color][/b][/size]',
+      ...(state.selectedDisadvantages.length > 0 || state.customDisadvantages.length > 0
+        ? [
+            '[list]',
+            ...state.selectedDisadvantages.map(d => {
+              let raw = DATA.disadvantages.find(z => z.name === d.name);
+              return `[*] [b]${d.name}:[/b] ${raw ? raw.text.split('\n')[0] : ''}`;
+            }),
+            ...state.customDisadvantages.map(d => `[*] [b]${d.name} (Personalizada):[/b] ${d.note || '—'}`),
+            '[/list]'
+          ]
+        : ['Ninguna.']
+      ),
+      '',
+      ...(state.tactics ? ['[size=4][b][color=#8c2d19]Modo de Actuar[/color][/b][/size]', state.tactics] : [])
+    ].filter(line => line !== null && line !== undefined).join('\n');
+  }
+
   // Versión completa para Diseñadores (Páginas 82 - 84)
   return [
     `# ${name}`,
@@ -2034,14 +2180,26 @@ function exportText(mode = 'complete') {
 function exportExplain() {
   let mode = $('exportMode')?.value || 'complete';
   if ($('exportExplainTitle')) {
-    $('exportExplainTitle').textContent = mode === 'complete'
-      ? 'Versión completa para Diseñadores (Páginas 82-84 del manual de reglas)'
-      : 'Versión compacta para manuales, suplementos y bestiarios (Páginas 84-85 del manual de reglas)';
+    if (mode === 'complete') {
+      $('exportExplainTitle').textContent = 'Versión completa para Diseñadores (Páginas 82-84 del manual de reglas)';
+    } else if (mode === 'compact') {
+      $('exportExplainTitle').textContent = 'Versión compacta para manuales, suplementos y bestiarios (Páginas 84-85 del manual de reglas)';
+    } else if (mode === 'discord') {
+      $('exportExplainTitle').textContent = 'Formato Discord (Markdown con negritas, bloques y listas listo para pegar)';
+    } else if (mode === 'bbcode') {
+      $('exportExplainTitle').textContent = 'Formato BBCode (Etiquetas [b], [color], [size], [list] para foros de rol y partidas)';
+    }
   }
   if ($('exportExplain')) {
-    $('exportExplain').textContent = mode === 'complete'
-      ? 'Ficha técnica íntegra con desglose de presupuestos de PR y Niveles de Conjuro, chasis base, modificadores paso a paso, todas las tablas de rasgos, desventajas, ataques y conjuros.'
-      : 'Formato ultra condensado y optimizado para maquetación en módulos de aventura o bestiarios impresos con estadísticas consolidadas listas para jugar.';
+    if (mode === 'complete') {
+      $('exportExplain').textContent = 'Ficha técnica íntegra con desglose de presupuestos de PR y Niveles de Conjuro, chasis base, modificadores paso a paso, todas las tablas de rasgos, desventajas, ataques y conjuros.';
+    } else if (mode === 'compact') {
+      $('exportExplain').textContent = 'Formato ultra condensado y optimizado para maquetación en módulos de aventura o bestiarios impresos con estadísticas consolidadas listas para jugar.';
+    } else if (mode === 'discord') {
+      $('exportExplain').textContent = 'Estructura legible formateada en Discord Markdown (títulos en negrita, bloques de código para stats y listas con viñetas) ideal para canales de Discord.';
+    } else if (mode === 'bbcode') {
+      $('exportExplain').textContent = 'Etiquetas estándar de BBCode para foros clásicos y mesas virtuales que admiten sintaxis BBCode enriquecida.';
+    }
   }
 }
 
@@ -2064,6 +2222,299 @@ function bindExportButtons() {
       a.download = `${(state.name || 'criatura').toLowerCase().replace(/\s+/g, '_')}_ficha.txt`;
       a.click();
     };
+  }
+
+  if ($('openStatblockFromExportBtn')) {
+    $('openStatblockFromExportBtn').onclick = window.openStatblockModal;
+  }
+}
+
+// --- BESTIARY STATBLOCK & LOCAL STORAGE MANAGER ---
+
+function renderStatblock() {
+  const c = calc();
+  const name = state.name || 'Criatura sin nombre';
+  const identity = state.identity || `Criatura de tipo ${state.type || 'Desconocido'}.`;
+  const attacks = allAttacks();
+  const spells = [...state.selectedSpells, ...state.customSpells];
+  const ability = selectedAbilityText();
+
+  let html = `
+    <div class="statblock-container">
+      <div class="sb-title">${esc(name)}</div>
+      <div class="sb-sub">${esc(state.size)} · ${esc(state.type)}${state.tag ? ` (${esc(state.tag)})` : ''} · ${esc(state.nature || 'Sin naturaleza')} · ${esc(state.behavior)}</div>
+      <div class="sb-divider"></div>
+
+      <div class="sb-line"><strong>Identidad:</strong> "${esc(identity)}"</div>
+      <div class="sb-line"><strong>Nivel de Desafío (ND):</strong> ${esc(state.nd)} &nbsp;|&nbsp; <strong>Movimiento:</strong> ${esc(c.moveBand)} &nbsp;|&nbsp; <strong>Alcance natural:</strong> ${esc(c.reach)}</div>
+
+      <div class="sb-stats">
+        <div class="sb-stat-box"><b>${c.res}</b><span>Resistencia</span></div>
+        <div class="sb-stat-box"><b>${c.def}</b><span>Defensa</span></div>
+        <div class="sb-stat-box"><b>+${c.C}</b><span>Cuerpo</span></div>
+        <div class="sb-stat-box"><b>+${c.D}</b><span>Destreza</span></div>
+        <div class="sb-stat-box"><b>+${c.A}</b><span>Aura</span></div>
+      </div>
+
+      <div class="sb-line"><strong>Habilidad de Tipo (${esc(state.type)}):</strong> <em>${esc(ability.name)}</em> — ${esc(ability.text)}</div>
+      ${state.heritage ? `<div class="sb-line"><strong>Herencia:</strong> ${esc(state.heritage)} ${state.heritageTraits ? `(${esc(state.heritageTraits)})` : ''}</div>` : ''}
+      ${c.notes.length > 0 ? `<div class="sb-line"><strong>Propiedades pasivas:</strong> ${c.notes.map(n => esc(n)).join(' · ')}</div>` : ''}
+
+      ${state.selectedTraits.length > 0 || state.customTraits.length > 0 ? `
+        <div class="sb-section-head">Rasgos y Dones</div>
+        ${state.selectedTraits.map(t => {
+          let raw = DATA.traits.find(z => z.name === t.name);
+          return `<div class="sb-entry"><strong>${esc(t.name)}:</strong> ${esc(raw ? raw.text : '')}</div>`;
+        }).join('')}
+        ${state.customTraits.map(t => `<div class="sb-entry"><strong>${esc(t.name)} (Personalizado):</strong> ${esc(t.note || '—')}</div>`).join('')}
+      ` : ''}
+
+      ${state.selectedDisadvantages.length > 0 || state.customDisadvantages.length > 0 ? `
+        <div class="sb-section-head">Desventajas y Vulnerabilidades</div>
+        ${state.selectedDisadvantages.map(d => {
+          let raw = DATA.disadvantages.find(z => z.name === d.name);
+          return `<div class="sb-entry"><strong>${esc(d.name)}:</strong> ${esc(raw ? raw.text : '')}</div>`;
+        }).join('')}
+        ${state.customDisadvantages.map(d => `<div class="sb-entry"><strong>${esc(d.name)} (Personalizada):</strong> ${esc(d.note || '—')}</div>`).join('')}
+      ` : ''}
+
+      <div class="sb-section-head">Acciones de Ataque (Daño Base: ${c.base.damage})</div>
+      ${attacks.map(a => `
+        <div class="sb-entry">
+          <strong>${esc(a.name)}:</strong> Tirada con ${esc(a.attr)} (+${c[a.attr[0]]}), alcance ${esc(a.range)}, daño <strong>${esc(a.damage)}</strong> ${esc(a.dmgType || '')}. ${esc(a.effect)}
+        </div>
+      `).join('')}
+
+      ${spells.length > 0 ? `
+        <div class="sb-section-head">Conjuros (${c.spellLevelsUsed} / ${c.spellLevelsTotal} Niveles usados)</div>
+        ${spells.map(s => `
+          <div class="sb-entry">
+            <strong>${esc(s.name)}</strong> (Nivel ${'I'.repeat(s.level || 1)}, Coste ${esc(s.cost || `${s.resCost || 2} Res`)}): ${esc(s.action)}, ${esc(s.energy)} (${esc(s.affinity)}), alcance/área ${esc(s.range)}, tirada/salvación ${esc(s.roll)}. ${esc(s.effect)} [Duración: ${esc(s.duration)}, Cierre: ${esc(s.closing || 'se disipa')}].
+          </div>
+        `).join('')}
+      ` : ''}
+
+      <div class="sb-section-head">Reacciones</div>
+      <div class="sb-entry">
+        ${c.noReactions ? 'No puede usar Reacciones (impuesto por Criatura Menor o Sin Reacción).' : 'Puede usar Reacciones estándar de combate y aquellas concedidas por sus conjuros o rasgos.'}
+      </div>
+
+      ${state.equipment.length > 0 || state.customEquipment.length > 0 ? `
+        <div class="sb-section-head">Equipo y Armamento</div>
+        <div class="sb-entry">
+          ${[...state.equipment.map(e => e.name), ...state.customEquipment.map(e => e.name)].join(', ')}
+        </div>
+      ` : ''}
+
+      ${state.description || state.tactics ? `
+        <div class="sb-divider-thin" style="margin-top:14px;"></div>
+        ${state.description ? `<div class="sb-entry"><strong>Descripción:</strong> <em>${esc(state.description)}</em></div>` : ''}
+        ${state.tactics ? `<div class="sb-entry"><strong>Comportamiento Táctico:</strong> <em>${esc(state.tactics)}</em></div>` : ''}
+      ` : ''}
+    </div>
+  `;
+
+  let box = $('statblockContent');
+  if (box) box.innerHTML = html;
+}
+
+window.openStatblockModal = () => {
+  renderStatblock();
+  let m = $('statblockModal');
+  if (m) m.classList.remove('hidden');
+};
+
+window.closeStatblockModal = () => {
+  let m = $('statblockModal');
+  if (m) m.classList.add('hidden');
+};
+
+// --- LOCAL STORAGE CREATURE MANAGER ---
+const STORAGE_KEY = 'papa_creatures_library_v1';
+
+function getStoredCreatures() {
+  try {
+    let data = localStorage.getItem(STORAGE_KEY);
+    return data ? JSON.parse(data) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveStoredCreatures(arr) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
+    updateStoredCount();
+  } catch (e) {
+    alert('No se pudo guardar en el almacenamiento local: ' + e.message);
+  }
+}
+
+function updateStoredCount() {
+  let count = getStoredCreatures().length;
+  if ($('savedCount')) $('savedCount').textContent = count;
+}
+
+window.saveCurrentCreatureToStorage = () => {
+  let creatures = getStoredCreatures();
+  let name = (state.name || '').trim() || 'Criatura sin nombre';
+  let dateStr = new Date().toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' });
+
+  let newEntry = {
+    id: 'c_' + Date.now(),
+    name: name,
+    nd: state.nd,
+    type: state.type,
+    updatedAt: dateStr,
+    data: JSON.parse(JSON.stringify(state))
+  };
+
+  creatures.unshift(newEntry);
+  saveStoredCreatures(creatures);
+  renderBestiaryList();
+
+  let btn = $('saveLocalBtn');
+  if (btn) {
+    let orig = btn.textContent;
+    btn.textContent = '¡Guardada!';
+    setTimeout(() => { btn.textContent = orig; }, 1800);
+  }
+};
+
+function renderBestiaryList() {
+  let list = $('bestiaryList');
+  if (!list) return;
+  let creatures = getStoredCreatures();
+  updateStoredCount();
+
+  if (creatures.length === 0) {
+    list.innerHTML = `
+      <div class="mini-info" style="text-align:center;padding:18px;">
+        <p class="muted" style="margin:0;">Aún no tienes criaturas guardadas en tu navegador.</p>
+        <button class="btn" style="margin-top:10px;" onclick="window.saveCurrentCreatureToStorage()">Guardar la criatura actual ahora</button>
+      </div>
+    `;
+    return;
+  }
+
+  list.innerHTML = creatures.map(item => `
+    <div class="item-card">
+      <div class="item-header">
+        <div>
+          <strong style="font-size:15px;">${esc(item.name)}</strong>
+          <span class="badge">ND ${esc(item.nd)}</span>
+          <span class="mini muted">${esc(item.type)} · Guardada el ${esc(item.updatedAt)}</span>
+        </div>
+        <div class="row" style="gap:6px;">
+          <button class="btn-sm" onclick="window.loadStoredCreature('${item.id}')" title="Cargar en el creador">Cargar</button>
+          <button class="btn-sm secondary" onclick="window.cloneStoredCreature('${item.id}')" title="Crear una copia">Clonar</button>
+          <button class="btn-sm danger" onclick="window.deleteStoredCreature('${item.id}')" title="Eliminar del navegador">Borrar</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+window.loadStoredCreature = id => {
+  let creatures = getStoredCreatures();
+  let found = creatures.find(c => c.id === id);
+  if (!found) return;
+  if (confirm(`¿Cargar la criatura "${found.name}"? Los cambios no guardados se sustituirán.`)) {
+    cloneState(JSON.parse(JSON.stringify(found.data)));
+    rebuild();
+    window.closeBestiaryModal();
+  }
+};
+
+window.cloneStoredCreature = id => {
+  let creatures = getStoredCreatures();
+  let found = creatures.find(c => c.id === id);
+  if (!found) return;
+  let copyData = JSON.parse(JSON.stringify(found.data));
+  copyData.name = (copyData.name || 'Criatura') + ' (Copia)';
+  let dateStr = new Date().toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' });
+  creatures.unshift({
+    id: 'c_' + Date.now(),
+    name: copyData.name,
+    nd: copyData.nd,
+    type: copyData.type,
+    updatedAt: dateStr,
+    data: copyData
+  });
+  saveStoredCreatures(creatures);
+  renderBestiaryList();
+};
+
+window.deleteStoredCreature = id => {
+  let creatures = getStoredCreatures();
+  let found = creatures.find(c => c.id === id);
+  if (!found) return;
+  if (confirm(`¿Eliminar definitivamente "${found.name}" de la biblioteca local?`)) {
+    creatures = creatures.filter(c => c.id !== id);
+    saveStoredCreatures(creatures);
+    renderBestiaryList();
+  }
+};
+
+window.openBestiaryModal = () => {
+  renderBestiaryList();
+  let m = $('bestiaryModal');
+  if (m) m.classList.remove('hidden');
+};
+
+window.closeBestiaryModal = () => {
+  let m = $('bestiaryModal');
+  if (m) m.classList.add('hidden');
+};
+
+window.exportAllBestiaryJSON = () => {
+  let creatures = getStoredCreatures();
+  let blob = new Blob([JSON.stringify(creatures, null, 2)], { type: 'application/json' });
+  let a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `papa_biblioteca_criaturas_${Date.now()}.json`;
+  a.click();
+};
+
+// --- VALIDATION INDICATOR STATUS ---
+function updateValidationBadge() {
+  const badge = $('validationBadge');
+  const icon = $('validationIcon');
+  const text = $('validationText');
+  if (!badge) return;
+
+  const c = calc();
+  const checks = [
+    Boolean(state.identity && state.identity.length > 15),
+    Boolean(state.nd),
+    Boolean(state.type && state.nature),
+    Boolean(state.behavior),
+    Boolean(c.moveBand),
+    c.res >= 5,
+    c.def <= 16,
+    c.prRemaining >= 0,
+    c.spellLevelsRemaining >= 0,
+    allAttacks().length > 0
+  ];
+
+  let failedCount = checks.filter(x => !x).length;
+  let prExceeded = c.prRemaining < 0;
+  let spellExceeded = c.spellLevelsRemaining < 0;
+
+  if (failedCount === 0) {
+    badge.className = 'validation-badge valid';
+    if (icon) icon.textContent = '✓';
+    if (text) text.textContent = `Reglamentaria (PR: ${c.prRemaining} lib.)`;
+    badge.title = 'Todas las reglas matemáticas y de chasis están en regla. Clic para ir a Revisión.';
+  } else {
+    badge.className = 'validation-badge invalid';
+    if (icon) icon.textContent = '⚠️';
+    let msg = [];
+    if (prExceeded) msg.push(`${Math.abs(c.prRemaining)} PR en exceso`);
+    if (spellExceeded) msg.push(`${Math.abs(c.spellLevelsRemaining)} Niv. conjuros`);
+    if (!msg.length) msg.push(`${failedCount} fallo(s)`);
+    if (text) text.textContent = msg.join(' · ');
+    badge.title = 'Hay parámetros que no cumplen el reglamento oficial. Clic para auditar en Revisión.';
   }
 }
 
@@ -2157,6 +2608,41 @@ function init() {
   }
   if ($('resetBtn')) $('resetBtn').onclick = window.resetCreature;
 
+  // Header & Modals bindings
+  if ($('statblockBtn')) $('statblockBtn').onclick = window.openStatblockModal;
+  if ($('closeStatblockBtn')) $('closeStatblockBtn').onclick = window.closeStatblockModal;
+  if ($('printStatblockBtn')) $('printStatblockBtn').onclick = () => window.print();
+
+  if ($('bestiaryModalBtn')) $('bestiaryModalBtn').onclick = window.openBestiaryModal;
+  if ($('closeBestiaryBtn')) $('closeBestiaryBtn').onclick = window.closeBestiaryModal;
+  if ($('saveLocalBtn')) $('saveLocalBtn').onclick = window.saveCurrentCreatureToStorage;
+  if ($('saveCurrentToBestiaryBtn')) $('saveCurrentToBestiaryBtn').onclick = window.saveCurrentCreatureToStorage;
+  if ($('exportAllBestiaryBtn')) $('exportAllBestiaryBtn').onclick = window.exportAllBestiaryJSON;
+
+  if ($('validationBadge')) {
+    $('validationBadge').onclick = () => switchSection('review');
+  }
+
+  // Close modals on overlay click or Escape
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      window.closeStatblockModal();
+      window.closeBestiaryModal();
+    }
+  });
+
+  ['statblockModal', 'bestiaryModal'].forEach(id => {
+    let el = $(id);
+    if (el) {
+      el.addEventListener('click', ev => {
+        if (ev.target === el) {
+          el.classList.add('hidden');
+        }
+      });
+    }
+  });
+
+  updateStoredCount();
   rebuild();
 }
 
